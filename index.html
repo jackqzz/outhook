@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ipiap 卡密批量充值</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f4f5f7; color: #1f2329; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  header { padding: 28px 16px 8px; text-align: center; }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header p { margin-top: 6px; font-size: 13px; color: #646a73; }
+  nav { margin-top: 10px; font-size: 13px; }
+  nav a { color: #3370ff; text-decoration: none; }
+  .statusbar {
+    width: min(860px, calc(100vw - 32px)); margin-top: 14px; padding: 8px 14px;
+    border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 8px;
+    background: #fff; border: 1px solid #e5e6eb;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #9599a0; flex: none; }
+  .dot.ready { background: #34c724; }
+  .dot.busy { background: #3370ff; animation: pulse 1s infinite alternate; }
+  .dot.bad { background: #d83931; }
+  @keyframes pulse { to { opacity: .3; } }
+  .panel {
+    width: min(860px, calc(100vw - 32px)); background: #fff; border: 1px solid #e5e6eb;
+    border-radius: 12px; padding: 20px 24px; margin-top: 14px;
+  }
+  .cols { display: flex; gap: 14px; }
+  .col { flex: 1; min-width: 0; }
+  .col-title { font-size: 13px; font-weight: 600; color: #1f2329; margin-bottom: 6px; }
+  textarea {
+    width: 100%; min-height: 130px; resize: vertical; padding: 10px 12px;
+    border: 1px solid #d0d3d6; border-radius: 8px; font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.7;
+  }
+  textarea:focus { outline: none; border-color: #3370ff; }
+  .hint { font-size: 12px; color: #9599a0; margin-top: 6px; }
+  @media (max-width: 720px) { .cols { flex-direction: column; } }
+  .row { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+  .seg { display: flex; border: 1px solid #d0d3d6; border-radius: 8px; overflow: hidden; }
+  .seg button {
+    padding: 8px 20px; border: none; background: #fff; cursor: pointer; font-size: 14px; color: #1f2329;
+  }
+  .seg button.active { background: #3370ff; color: #fff; }
+  .seg button.danger.active { background: #d83931; }
+  .btn {
+    padding: 9px 22px; border-radius: 8px; border: none; background: #3370ff;
+    color: #fff; font-size: 14px; cursor: pointer;
+  }
+  .btn:hover { background: #295ee8; }
+  .btn:disabled { background: #b3c5f7; cursor: not-allowed; }
+  .btn.ghost { background: #fff; color: #3370ff; border: 1px solid #3370ff; }
+  .btn.danger { background: #d83931; }
+  .btn.danger:hover { background: #b62d26; }
+  .stats { font-size: 13px; color: #3c4046; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f0f1f3; vertical-align: top; }
+  th { color: #646a73; font-weight: 500; font-size: 12px; }
+  td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap;
+  }
+  .badge.pending { background: #f0f1f3; color: #646a73; }
+  .badge.running { background: #e8efff; color: #3370ff; }
+  .badge.done { background: #e2f6e4; color: #239a3b; }
+  .badge.error { background: #fdebea; color: #d83931; }
+  .badge.stopped { background: #fdf3e5; color: #c07f13; }
+  .msg { color: #3c4046; font-size: 12px; }
+  .msg .prod { color: #646a73; display: block; margin-bottom: 2px; }
+  footer { padding: 20px; font-size: 12px; color: #9599a0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ipiap 卡密批量充值</h1>
+  <p>左边放卡密（每行一个），右边放账号行 —— 按行号一一配对，顺序执行 step1→step4</p>
+  <nav><a href="/mail.html">Outlook 收信 →</a> <a href="/picker.html">账号分选 →</a></nav>
+</header>
+
+<div class="statusbar">
+  <span class="dot" id="dot"></span>
+  <span id="browser-status">连接中 ...</span>
+  <span style="flex:1"></span>
+  <span class="stats" id="stats"></span>
+</div>
+
+<div class="panel">
+  <div class="cols">
+    <div class="col">
+      <div class="col-title">卡密 <span class="hint" style="display:inline">每行一个</span></div>
+      <textarea id="cdk-input" placeholder="XXXX-XXXX-XXXX-XXXX&#10;YYYY-YYYY-YYYY-YYYY"></textarea>
+    </div>
+    <div class="col">
+      <div class="col-title">账号行 <span class="hint" style="display:inline">---- 分隔，自动提取 Org ID</span></div>
+      <textarea id="acct-input" placeholder="example@outlook.com----password----alt@gu.uy----...----xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx----...&#10;或直接粘贴 Organization ID (UUID)"></textarea>
+    </div>
+  </div>
+  <div class="hint">账号行格式：邮箱----密码----辅助邮箱----辅助邮箱密码----sk----注册时间----邮箱类型----OrgID----Token；用 UUID 自动定位 Org ID，单独一行 UUID 也可以。</div>
+  <div class="row">
+    <div class="seg" id="site-seg">
+      <button data-site="ipiap" class="active">ipiap.com</button>
+      <button data-site="applelll">applelll 兑换中心</button>
+      <button data-site="mobi">9527.mobi</button>
+    </div>
+    <div class="seg">
+      <button id="mode-check" class="active">仅校验</button>
+      <button id="mode-recharge" class="danger">充值</button>
+    </div>
+    <button class="btn" id="run">开始执行</button>
+    <button class="btn ghost" id="stop" disabled>停止</button>
+    <span class="stats" id="parse-info"></span>
+  </div>
+  <div class="row" id="apple-opts" style="display:none">
+    <input type="text" id="apple-host" value="kekoukele1822.applelll.com"
+           style="width:250px;padding:6px 10px;border:1px solid #d0d3d6;border-radius:6px;font-size:13px">
+    <select id="apple-product" style="padding:6px 10px;border:1px solid #d0d3d6;border-radius:6px;font-size:13px"></select>
+    <button class="btn ghost small" id="apple-refresh" type="button">刷新库存</button>
+    <span class="hint" id="apple-stock-time" style="margin-top:0"></span>
+  </div>
+  <div class="row" id="mobi-opts" style="display:none">
+    <input type="text" id="mobi-host" value="9527.mobi"
+           style="width:250px;padding:6px 10px;border:1px solid #d0d3d6;border-radius:6px;font-size:13px">
+    <span class="hint" style="margin-top:0">仅支持 Org ID 充值的卡 (Claude Pro 等); 仅校验 = precheck 验卡不消耗</span>
+  </div>
+</div>
+
+<div class="panel" id="result-panel" style="display:none">
+  <table>
+    <thead><tr>
+      <th style="width:36px">#</th>
+      <th>账号</th>
+      <th>卡密</th>
+      <th>Org ID</th>
+      <th style="width:76px">状态</th>
+      <th>详情</th>
+    </tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<footer>本地服务驱动真实 Chrome 过 Cloudflare · 充值模式会真实消耗卡密</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+let mode = "check", site = "ipiap", running = false, timer = null;
+
+// ---------- mode ----------
+function setMode(m) {
+  mode = m;
+  $("mode-check").classList.toggle("active", m === "check");
+  $("mode-recharge").classList.toggle("active", m === "recharge");
+}
+$("mode-check").onclick = () => setMode("check");
+$("mode-recharge").onclick = () => setMode("recharge");
+
+// ---------- site switch ----------
+document.querySelectorAll("#site-seg button").forEach(b =>
+  b.onclick = () => {
+    site = b.dataset.site;
+    document.querySelectorAll("#site-seg button").forEach(x =>
+      x.classList.toggle("active", x === b));
+    $("apple-opts").style.display = site === "applelll" ? "flex" : "none";
+    $("mobi-opts").style.display = site === "mobi" ? "flex" : "none";
+    if (site === "applelll") loadProducts();
+  });
+
+async function loadProducts() {
+  const host = $("apple-host").value.trim().replace(/\/+$/, "");
+  const url = "https://" + host.replace(/^https?:\/\//, "");
+  const sel = $("apple-product");
+  const keep = sel.value;                 // 刷新后尽量保留当前选择
+  sel.innerHTML = '<option value="">加载产品...</option>';
+  $("apple-refresh").disabled = true;
+  const r = await fetch("/api/apple/products?host=" +
+                        encodeURIComponent(url)).then(r => r.json()).catch(() => ({}));
+  $("apple-refresh").disabled = false;
+  const ps = r.products || [];
+  sel.innerHTML = ps.map(p =>
+    `<option value="${p.product_id}">${esc(p.name)} (id:${p.product_id} 库存:${p.stock ?? "?"})</option>`
+  ).join("") || '<option value="">无产品</option>';
+  if (keep && ps.some(p => String(p.product_id) === keep)) sel.value = keep;
+  $("apple-stock-time").textContent =
+    (r.error ? "拉取失败: " + r.error : "") +
+    (ps.length ? ` · 更新于 ${new Date().toLocaleTimeString()}` : "");
+}
+$("apple-host").addEventListener("change", loadProducts);
+$("apple-refresh").onclick = () => loadProducts();
+
+// ---------- parse input ----------
+const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+const EMAIL_RE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
+
+function parseCdks() {
+  return $("cdk-input").value.split("\n").map(s => s.trim()).filter(Boolean);
+}
+
+// 账号行: ---- 分隔, Org ID 取行内 UUID; 显示名取第一个邮箱段, 无则取第一段
+function parseAccts() {
+  const out = [];
+  for (const raw of $("acct-input").value.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const org = (line.match(UUID_RE) || [])[0];
+    if (!org) { out.push({ bad: line.slice(0, 40) }); continue; }
+    let acct = "";
+    for (const p of line.split(/\s*----\s*/)) {
+      const m = p.match(EMAIL_RE);
+      if (m) { acct = m[0]; break; }
+    }
+    if (!acct) acct = line.split(/\s*----\s*/)[0];
+    out.push({ org, acct });
+  }
+  return out;
+}
+
+function parseItems() {
+  const cdks = parseCdks(), accts = parseAccts();
+  const bad = accts.filter(a => a.bad);
+  const good = accts.filter(a => !a.bad);
+  const n = Math.min(cdks.length, good.length);
+  const items = [];
+  for (let i = 0; i < n; i++)
+    items.push({ cdk: cdks[i], org: good[i].org, acct: good[i].acct });
+  return { items, nCdk: cdks.length, nAcct: good.length, nBad: bad.length };
+}
+
+function updateParseInfo() {
+  const { items, nCdk, nAcct, nBad } = parseItems();
+  const parts = [];
+  if (items.length) parts.push(`配对 ${items.length} 条`);
+  if (nCdk !== nAcct && (nCdk || nAcct))
+    parts.push(`卡密 ${nCdk} / 账号 ${nAcct} 数量不等`);
+  if (nBad) parts.push(`${nBad} 行无 UUID`);
+  $("parse-info").textContent = parts.join(" · ");
+  return items;
+}
+$("cdk-input").addEventListener("input", updateParseInfo);
+$("acct-input").addEventListener("input", updateParseInfo);
+
+// ---------- 输入持久化: 切去收信页再回来不丢 ----------
+["cdk-input", "acct-input", "apple-host", "mobi-host"].forEach(id => {
+  const el = $(id);
+  const saved = localStorage.getItem("ipiap:" + id);
+  if (saved != null) el.value = saved;
+  el.addEventListener("input", () => localStorage.setItem("ipiap:" + id, el.value));
+});
+updateParseInfo();
+
+// ---------- run / stop ----------
+$("run").onclick = async () => {
+  const items = updateParseInfo();
+  if (!items.length) { $("parse-info").textContent = "没有可配对的条目"; return; }
+  if (mode === "recharge" &&
+      !confirm(`将对 ${items.length} 条卡密执行真实充值并消耗它们，确认？`)) return;
+  const body = { mode, items, site };
+  if (site === "applelll") {
+    body.host = "https://" + $("apple-host").value.trim()
+                .replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    body.product_id = parseInt($("apple-product").value) || null;
+    if (mode === "recharge" && !body.product_id) {
+      $("parse-info").textContent = "请选择产品"; return;
+    }
+  } else if (site === "mobi") {
+    body.host = "https://" + $("mobi-host").value.trim()
+                .replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  }
+  const r = await fetch("/api/batch", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+  if (r.error) { $("parse-info").textContent = r.error; return; }
+  renderItems(items.map((it, i) => ({ idx: i, ...it, state: "pending", message: "等待中", product: "", orderNo: "" })));
+};
+$("stop").onclick = () => fetch("/api/stop", { method: "POST" });
+
+// ---------- render ----------
+const STATE_LABEL = { pending: "等待", running: "运行中", done: "完成", error: "失败", stopped: "停止" };
+function renderItems(items) {
+  $("result-panel").style.display = "block";
+  $("tbody").innerHTML = items.map(it => `
+    <tr>
+      <td>${it.idx + 1}</td>
+      <td class="mono">${esc(it.acct || "—")}</td>
+      <td class="mono">${esc(it.cdk)}</td>
+      <td class="mono">${esc(it.org)}</td>
+      <td><span class="badge ${it.state}">${STATE_LABEL[it.state] || it.state}</span></td>
+      <td class="msg">${it.product ? `<span class="prod">${esc(it.product)}</span>` : ""}${esc(it.message)}</td>
+    </tr>`).join("");
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- poll ----------
+async function poll() {
+  let s;
+  try { s = await fetch("/api/state").then(r => r.json()); }
+  catch { $("browser-status").textContent = "服务端无响应"; $("dot").className = "dot bad"; return; }
+  const b = s.browser;
+  $("dot").className = "dot " + (b.status === "ready" ? "ready" :
+    (b.status === "dead" || b.status === "cf_blocked" ? "bad" : "busy"));
+  $("browser-status").textContent =
+    { ready: "浏览器就绪", starting: "浏览器启动中", cf_blocked: "Cloudflare 未放行",
+      dead: "浏览器已停止" }[b.status] || b.status
+    + (b.detail ? ` — ${b.detail}` : "");
+
+  const batch = s.batch;
+  running = !!(batch && !batch.finished);
+  // applelll 纯 HTTP 不需要浏览器, 不阻塞运行按钮
+  $("run").disabled = running || (site === "ipiap" && b.status !== "ready");
+  $("stop").disabled = !running;
+  if (batch) {
+    renderItems(batch.items);
+    const c = { done: 0, error: 0, stopped: 0, pending: 0, running: 0 };
+    batch.items.forEach(i => c[i.state]++);
+    $("stats").textContent =
+      `共 ${batch.items.length} · 完成 ${c.done} · 失败 ${c.error}` +
+      (c.stopped ? ` · 停止 ${c.stopped}` : "") +
+      (c.running + c.pending ? ` · 待处理 ${c.running + c.pending}` : "");
+  }
+}
+timer = setInterval(poll, 1000); poll();
+</script>
+</body>
+</html>

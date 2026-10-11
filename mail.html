@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Outlook 收信</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f4f5f7; color: #1f2329; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  header { padding: 28px 16px 8px; text-align: center; }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header p { margin-top: 6px; font-size: 13px; color: #646a73; }
+  nav { margin-top: 10px; font-size: 13px; }
+  nav a { color: #3370ff; text-decoration: none; }
+  .panel {
+    width: min(860px, calc(100vw - 32px)); background: #fff; border: 1px solid #e5e6eb;
+    border-radius: 12px; padding: 20px 24px; margin-top: 14px;
+  }
+  textarea {
+    width: 100%; min-height: 110px; resize: vertical; padding: 10px 12px;
+    border: 1px solid #d0d3d6; border-radius: 8px; font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.7;
+  }
+  textarea:focus { outline: none; border-color: #3370ff; }
+  .hint { font-size: 12px; color: #9599a0; margin-top: 6px; }
+  .row { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+  .btn {
+    padding: 8px 18px; border-radius: 8px; border: none; background: #3370ff;
+    color: #fff; font-size: 13px; cursor: pointer;
+  }
+  .btn:hover { background: #295ee8; }
+  .btn:disabled { background: #b3c5f7; cursor: not-allowed; }
+  .btn.ghost { background: #fff; color: #3370ff; border: 1px solid #3370ff; }
+  .btn.small { padding: 5px 12px; font-size: 12px; }
+  select {
+    padding: 5px 8px; border: 1px solid #d0d3d6; border-radius: 6px; font-size: 13px;
+    background: #fff;
+  }
+  .stats { font-size: 13px; color: #3c4046; }
+  .acct {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    border: 1px solid #e5e6eb; border-radius: 8px; margin-top: 8px; font-size: 13px;
+  }
+  .acct .num { flex: none; width: 26px; text-align: center; color: #9599a0; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .pager { display: flex; align-items: center; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .pager button {
+    min-width: 30px; padding: 4px 10px; border: 1px solid #d0d3d6; border-radius: 6px;
+    background: #fff; color: #1f2329; font-size: 12px; cursor: pointer;
+  }
+  .pager button:hover { border-color: #3370ff; color: #3370ff; }
+  .pager button.active { background: #3370ff; border-color: #3370ff; color: #fff; }
+  .pager button:disabled { opacity: .4; cursor: not-allowed; }
+  .pager .info { font-size: 12px; color: #646a73; margin-left: auto; }
+  .acct .org {
+    flex: none; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    color: #646a73; cursor: pointer; border-bottom: 1px dashed #bbb;
+    padding-bottom: 1px;
+  }
+  .acct .org:hover { color: #3370ff; border-color: #3370ff; }
+  .acct .email { font-family: ui-monospace, Menlo, monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .acct .email.active { color: #3370ff; font-weight: 600; }
+  .acct .code { font-family: ui-monospace, Menlo, monospace; color: #d83931; font-weight: 600; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 11px; background: #f0f1f3; color: #646a73; }
+  .badge.ok { background: #e2f6e4; color: #239a3b; }
+  .badge.bad { background: #fdebea; color: #d83931; }
+  .err-text { color: #d83931; font-size: 11px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
+  .mail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .mail-head .who { font-weight: 600; font-size: 14px; }
+  .seg { display: flex; border: 1px solid #d0d3d6; border-radius: 8px; overflow: hidden; }
+  .seg button { padding: 6px 16px; border: none; background: #fff; cursor: pointer; font-size: 13px; }
+  .seg button.active { background: #3370ff; color: #fff; }
+  .msg {
+    padding: 9px 12px; border-bottom: 1px solid #f0f1f3; cursor: pointer; font-size: 13px;
+    display: flex; gap: 10px; align-items: baseline;
+  }
+  .msg:hover { background: #f6f8fb; }
+  .msg .time { color: #9599a0; font-size: 12px; white-space: nowrap; }
+  .msg .from { color: #646a73; font-size: 12px; width: 200px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg .subj { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg.unread .subj, .msg.unread .from { font-weight: 600; color: #1f2329; }
+  .msg .vc {
+    font-family: ui-monospace, Menlo, monospace; font-size: 13px; font-weight: 700;
+    color: #fff; background: #d83931; border-radius: 6px; padding: 1px 8px;
+  }
+  .body-view {
+    border: 1px solid #e5e6eb; border-radius: 8px; margin-top: 10px; overflow: hidden;
+  }
+  .body-view .meta { padding: 10px 14px; background: #f6f8fb; font-size: 12px; color: #3c4046; border-bottom: 1px solid #e5e6eb; }
+  .body-view iframe { width: 100%; height: 420px; border: none; background: #fff; }
+  .links { padding: 10px 14px; border-bottom: 1px solid #e5e6eb; display: flex; flex-direction: column; gap: 8px; }
+  .link-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .link-row .u {
+    flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    color: #3370ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
+  }
+  .link-row.primary .u { color: #d83931; font-weight: 600; }
+  .link-row .tag { flex: none; font-size: 11px; color: #fff; background: #d83931; border-radius: 6px; padding: 1px 8px; }
+  .copy-btn {
+    flex: none; padding: 3px 12px; border-radius: 6px; border: 1px solid #3370ff;
+    background: #fff; color: #3370ff; font-size: 12px; cursor: pointer;
+  }
+  .copy-btn:hover { background: #f0f5ff; }
+  .copy-btn.ok { border-color: #239a3b; color: #239a3b; }
+  footer { padding: 20px; font-size: 12px; color: #9599a0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Outlook 收信</h1>
+  <p>粘贴 ---- 分隔的账号行，用 RT 换 AT 读收件箱/垃圾邮件 · 自动提取 6 位验证码</p>
+  <nav><a href="/">← 充值批处理</a> <a href="/picker.html">账号分选 →</a></nav>
+</header>
+
+<div class="panel">
+  <textarea id="acct-input" placeholder="邮箱----密码----辅助邮箱----辅助邮箱密码----sk----注册时间----邮箱类型----client_id----refresh_token&#10;也可只贴 refresh_token (M.C547 开头)"></textarea>
+  <div class="hint">自动提取：邮箱 = 第一个邮箱段，client_id = 行内 UUID（缺省用 9e5f94bc-...），refresh_token = M. 开头字段。</div>
+  <div class="row">
+    <button class="btn" id="fetch-all">全部收信</button>
+    <span class="stats" id="parse-info"></span>
+  </div>
+  <div id="accts"></div>
+</div>
+
+<div class="panel" id="mailbox" style="display:none">
+  <div class="mail-head">
+    <span class="who" id="mb-who"></span>
+    <div class="seg">
+      <button data-f="inbox" class="active">收件箱</button>
+      <button data-f="junkemail">垃圾邮件</button>
+    </div>
+    <button class="btn ghost small" id="reload">刷新</button>
+    <span class="stats" id="mb-status"></span>
+  </div>
+  <div id="msgs"></div>
+  <div class="body-view" id="body-view" style="display:none">
+    <div class="meta" id="body-meta"></div>
+    <div id="links"></div>
+    <iframe id="body-frame" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe>
+  </div>
+</div>
+
+<footer>login.microsoftonline.com → outlook.office.com/api/v2.0 · 令牌只走本地服务端, 不持久化</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+const EMAIL_RE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
+const DEFAULT_CID = "9e5f94bc-e8a4-4e73-b8be-63364c29d753";
+
+let accounts = [];        // {email, client_id, rt, at?, err?}
+let cur = -1, folder = "inbox", acctPage = 0;
+const PAGE_SIZE = 10;
+
+// ---------- parse ----------
+function parse() {
+  accounts = [];
+  let skipped = 0;
+  for (const raw of $("acct-input").value.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const parts = line.split("----").map(s => s.trim()).filter(Boolean);
+    const rtIdx = parts.findIndex(p => p.startsWith("M."));
+    if (rtIdx < 0) { skipped++; continue; }   // 没有 token 的行跳过
+    const rt = parts[rtIdx];
+    // client_id = RT 前面最近的 UUID (兼容 OrgID----mailtype----ClientID----RT 两段 UUID)
+    let cid = null;
+    for (let j = rtIdx - 1; j >= 0; j--) {
+      const m = parts[j].match(UUID_RE);
+      if (m) { cid = m[0]; break; }
+    }
+    if (!cid) cid = (line.match(UUID_RE) || [DEFAULT_CID])[0];
+    const org = (line.match(UUID_RE) || [""])[0];
+    let email = "";
+    for (const p of parts) {
+      const m = p.match(EMAIL_RE);
+      if (m) { email = m[0]; break; }
+    }
+    if (!email) email = parts[0] || "?";
+    accounts.push({ email, client_id: cid, org, rt });
+  }
+  acctPage = 0;
+  renderAccts();
+  const parts = [];
+  if (accounts.length) parts.push(`已解析 ${accounts.length} 个账号`);
+  if (skipped) parts.push(`${skipped} 行没有 M. 开头的 RT, 已跳过`);
+  $("parse-info").textContent = parts.join(" · ");
+}
+$("acct-input").addEventListener("input", parse);
+// 输入持久化: 与充值页共享同一份账号行 (key 一致), 粘一次两边都有
+{
+  const el = $("acct-input"), saved = localStorage.getItem("ipiap:acct-input");
+  if (saved != null) el.value = saved;
+  el.addEventListener("input", () => localStorage.setItem("ipiap:acct-input", el.value));
+  parse();
+}
+
+// ---------- account list ----------
+function renderAccts() {
+  const tp = Math.max(1, Math.ceil(accounts.length / PAGE_SIZE));
+  if (acctPage >= tp) acctPage = tp - 1;
+  const start = acctPage * PAGE_SIZE;
+  const slice = accounts.slice(start, start + PAGE_SIZE);
+  $("accts").innerHTML = slice.map((a, j) => {
+    const i = start + j;
+    return `<div class="acct">
+      <span class="num">${i + 1}</span>
+      <span class="email ${i === cur ? "active" : ""}">${esc(a.email)}</span>
+      ${a.org ? `<span class="org" data-u="${a.org}" title="Org ID · 点击复制">${a.org.slice(0, 8)}…${a.org.slice(-4)}</span>` : ""}
+      <span class="code">${esc(a.code || "")}</span>
+      ${a.err ? `<span class="err-text" title="${esc(a.err)}">${esc(a.err)}</span>` :
+        `<span class="badge ${a.at ? "ok" : ""}">${a.at ? "已登录" : ""}</span>`}
+      <button class="btn ghost small copy-btn" data-u="${esc(a.email)}">复制</button>
+      <button class="btn small" data-i="${i}">收信</button>
+    </div>`;
+  }).join("") + (tp > 1 ? renderPager(tp) : "");
+  $("accts").querySelectorAll(".acct button[data-i]").forEach(b =>
+    b.onclick = () => loadMailbox(+b.dataset.i));
+  $("accts").querySelectorAll(".acct .copy-btn").forEach(b =>
+    b.onclick = () => copyText(b));
+  $("accts").querySelectorAll(".acct .org").forEach(el => el.onclick = async () => {
+    await copyTextVal(el.dataset.u);
+    const t = el.textContent; el.textContent = "已复制";
+    setTimeout(() => el.textContent = t, 1200);
+  });
+  $("accts").querySelectorAll(".pager button[data-p]").forEach(b =>
+    b.onclick = () => { acctPage = +b.dataset.p; renderAccts(); });
+}
+
+function renderPager(tp) {
+  // 页码按钮: <=12 页全显示, 否则压缩成 1 … 当前附近 … tp
+  const nums = [];
+  if (tp <= 12) { for (let p = 0; p < tp; p++) nums.push(p); }
+  else {
+    nums.push(0);
+    for (let p = Math.max(1, acctPage - 2); p <= Math.min(tp - 2, acctPage + 2); p++) nums.push(p);
+    nums.push(tp - 1);
+  }
+  const dedup = [...new Set(nums)].sort((a, b) => a - b);
+  let html = `<div class="pager">
+    <button data-p="${acctPage - 1}" ${acctPage === 0 ? "disabled" : ""}>‹</button>`;
+  let prev = -1;
+  for (const p of dedup) {
+    if (p - prev > 1) html += `<button disabled>…</button>`;
+    html += `<button data-p="${p}" class="${p === acctPage ? "active" : ""}">${p + 1}</button>`;
+    prev = p;
+  }
+  html += `<button data-p="${acctPage + 1}" ${acctPage === tp - 1 ? "disabled" : ""}>›</button>
+    <span class="info">共 ${accounts.length} 个 · 第 ${acctPage + 1}/${tp} 页</span></div>`;
+  return html;
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- api ----------
+async function post(url, body) {
+  try {
+    const r = await fetch(url, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(body) });
+    return await r.json();
+  } catch (e) {
+    return { error: "请求本地服务失败: " + e.message +
+             " (服务端在跑吗? http://127.0.0.1:8321)" };
+  }
+}
+async function ensureAt(a) {
+  if (a.at) return true;
+  const r = await post("/api/mail/login",
+    { client_id: a.client_id, refresh_token: a.rt });
+  if (r.access_token) { a.at = r.access_token; delete a.err; return true; }
+  a.err = r.error || "登录失败"; return false;
+}
+
+// ---------- mailbox ----------
+async function loadMailbox(i) {
+  cur = i; folder = "inbox";
+  const a = accounts[i];
+  renderAccts();
+  $("mailbox").style.display = "block";
+  $("mb-who").textContent = a.email;
+  $("body-view").style.display = "none";
+  document.querySelectorAll(".seg button").forEach(b =>
+    b.classList.toggle("active", b.dataset.f === folder));
+  $("mb-status").textContent = "登录中 ...";
+  if (!await ensureAt(a)) {
+    renderAccts();
+    $("mb-status").textContent = a.err; $("msgs").innerHTML = ""; return;
+  }
+  renderAccts();
+  await loadMsgs();
+}
+
+async function loadMsgs() {
+  const a = accounts[cur]; if (!a) return;
+  $("mb-status").textContent = "拉取邮件 ...";
+  const r = await post("/api/mail/messages",
+    { access_token: a.at, folder, top: 30 });
+  if (r.error) { $("mb-status").textContent = r.error; $("msgs").innerHTML = ""; return; }
+  const list = r.value || [];
+  $("mb-status").textContent = `${list.length} 封`;
+  $("msgs").innerHTML = list.map(m => {
+    const from = m.From?.EmailAddress?.Address || "";
+    const code = (m.Subject + " " + (m.BodyPreview || "")).match(/\b\d{6}\b/);
+    return `<div class="msg ${m.IsRead ? "" : "unread"}" data-id="${esc(m.Id)}">
+      <span class="time">${fmtTime(m.ReceivedDateTime)}</span>
+      <span class="from">${esc(from)}</span>
+      <span class="subj">${esc(m.Subject || "(无主题)")}</span>
+      ${code ? `<span class="vc">${code[0]}</span>` : ""}
+      <button class="copy-btn qlink" data-id="${esc(m.Id)}">取链接</button>
+    </div>`;
+  }).join("") || '<div class="msg">空</div>';
+  $("msgs").querySelectorAll(".msg[data-id]").forEach(el =>
+    el.onclick = () => openMsg(el.dataset.id));
+  $("msgs").querySelectorAll(".qlink").forEach(b =>
+    b.onclick = e => { e.stopPropagation(); quickCopyLink(b); });
+}
+
+// 一键: 拉正文 -> 提取主链接 -> 直接复制
+async function quickCopyLink(btn) {
+  const a = accounts[cur]; if (!a) return;
+  btn.textContent = "...";
+  const m = await post("/api/mail/message", { access_token: a.at, id: btn.dataset.id });
+  const urls = m.error ? [] : extractLinks(m.Body?.Content || "");
+  if (!urls.length) { btn.textContent = "无链接"; setTimeout(() => btn.textContent = "取链接", 1500); return; }
+  await copyTextVal(urls[0]);
+  btn.textContent = "已复制"; btn.classList.add("ok");
+  setTimeout(() => { btn.textContent = "取链接"; btn.classList.remove("ok"); }, 1500);
+}
+
+async function openMsg(id) {
+  const a = accounts[cur]; if (!a) return;
+  $("mb-status").textContent = "读取正文 ...";
+  const m = await post("/api/mail/message", { access_token: a.at, id });
+  $("mb-status").textContent = "";
+  if (m.error) { $("mb-status").textContent = m.error; return; }
+  $("body-meta").textContent =
+    `${m.From?.EmailAddress?.Address || ""} · ${fmtTime(m.ReceivedDateTime)} · ${m.Subject || ""}`;
+  const content = m.Body?.Content || "";
+  const html = m.Body?.ContentType === "Text"
+    ? `<pre style="font-family:inherit;white-space:pre-wrap;padding:14px">${esc(content)}</pre>`
+    : (content || "(空)");
+  renderLinks(extractLinks(content));
+  $("body-frame").srcdoc = html;
+  $("body-view").style.display = "block";
+  $("body-view").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// ---------- url 提取 + 复制 ----------
+const HOT_RE = /magic-link|verify|signin|sign-in|login|token|confirm/i;
+
+function extractLinks(content) {
+  const found = [], seen = new Set();
+  const push = u => {
+    u = u.trim().replace(/&amp;/g, "&").replace(/[.,;)>]+$/, "");
+    if (/^https?:\/\//i.test(u) && !seen.has(u)) { seen.add(u); found.push(u); }
+  };
+  // href="..." / href='...' / href=裸值
+  for (const m of content.matchAll(/href\s*=\s*["']([^"']+)["']/gi)) push(m[1]);
+  // 纯文本里的裸 url
+  for (const m of content.matchAll(/https?:\/\/[^\s"'<>]+/gi)) push(m[0]);
+  // magic-link 之类排前面
+  found.sort((a, b) => (HOT_RE.test(b) ? 1 : 0) - (HOT_RE.test(a) ? 1 : 0));
+  return found;
+}
+
+function renderLinks(urls) {
+  const box = $("links");
+  box.className = "links";
+  if (!urls.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+  box.style.display = "flex";
+  box.innerHTML = urls.map((u, i) => `
+    <div class="link-row ${i === 0 && HOT_RE.test(u) ? "primary" : ""}">
+      ${i === 0 && HOT_RE.test(u) ? '<span class="tag">登录链接</span>' : ""}
+      <span class="u" title="${esc(u)}">${esc(u)}</span>
+      <button class="copy-btn" data-u="${esc(u)}">复制</button>
+    </div>`).join("");
+  box.querySelectorAll(".copy-btn").forEach(b => b.onclick = () => copyText(b));
+}
+
+async function copyText(btn) {
+  await copyTextVal(btn.dataset.u);
+  btn.textContent = "已复制"; btn.classList.add("ok");
+  setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("ok"); }, 1500);
+}
+
+async function copyTextVal(u) {
+  try { await navigator.clipboard.writeText(u); }
+  catch {
+    const ta = document.createElement("textarea");
+    ta.value = u; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); ta.remove();
+  }
+}
+
+// ---------- 全部收信: 登录每个账号, 抓最新一封提取验证码 ----------
+$("fetch-all").onclick = async () => {
+  for (const a of accounts) {
+    a.code = ""; renderAccts();
+    if (!await ensureAt(a)) { renderAccts(); continue; }
+    const r = await post("/api/mail/messages",
+      { access_token: a.at, folder: "inbox", top: 5 });
+    const code = ((r.value || [])[0]?.Subject + " " +
+                  ((r.value || [])[0]?.BodyPreview || "")).match(/\b\d{6}\b/);
+    if (code) a.code = code[0];
+    renderAccts();
+  }
+};
+
+// ---------- folder seg ----------
+document.querySelectorAll(".seg button").forEach(b =>
+  b.onclick = () => { folder = b.dataset.f; loadMsgs();
+    document.querySelectorAll(".seg button").forEach(x =>
+      x.classList.toggle("active", x === b)); });
+$("reload").onclick = () => loadMsgs();
+
+function fmtTime(t) {
+  if (!t) return "";
+  const d = new Date(t);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+</script>
+</body>
+</html>

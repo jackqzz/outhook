@@ -1,0 +1,5 @@
+.venv/
+.chrome-profile/
+__pycache__/
+*.log
+.DS_Store

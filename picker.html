@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>账号分选</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: #f5f6f7; color: #1f2329;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  nav { margin-top: 10px; font-size: 13px; }
+  nav a { color: #3370ff; text-decoration: none; margin-right: 14px; }
+  .panel {
+    background: #fff; border: 1px solid #e5e6eb; border-radius: 10px;
+    padding: 16px; margin-top: 14px;
+  }
+  textarea {
+    width: 100%; height: 110px; resize: vertical; font-size: 12px;
+    font-family: ui-monospace, Menlo, monospace;
+    border: 1px solid #d0d3d6; border-radius: 8px; padding: 8px;
+  }
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .btn {
+    background: #3370ff; color: #fff; border: none; border-radius: 6px;
+    padding: 6px 14px; font-size: 13px; cursor: pointer;
+  }
+  .btn.ghost { background: #fff; color: #3370ff; border: 1px solid #3370ff; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.small { padding: 4px 10px; font-size: 12px; }
+  .hint { font-size: 12px; color: #9599a0; margin-top: 8px; }
+  .stats { font-size: 13px; color: #3c4046; }
+  .stats b { color: #3370ff; }
+  input[type=text], input[type=number] {
+    padding: 5px 8px; border: 1px solid #d0d3d6; border-radius: 6px; font-size: 13px;
+    background: #fff;
+  }
+  #list { margin-top: 10px; max-height: 52vh; overflow-y: auto; }
+  .row-item {
+    display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+    border: 1px solid #e5e6eb; border-radius: 8px; margin-top: 6px; font-size: 13px;
+    cursor: pointer; user-select: none;
+  }
+  .row-item:hover { border-color: #3370ff; }
+  .row-item.sel { background: #f0f5ff; border-color: #3370ff; }
+  .row-item .num { flex: none; width: 28px; text-align: center; color: #9599a0; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .row-item .email { font-family: ui-monospace, Menlo, monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .row-item .org {
+    flex: none; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    color: #646a73; border-bottom: 1px dashed #bbb;
+  }
+  .row-item .org-btn {
+    flex: none; font-size: 11px; padding: 2px 8px; border: 1px solid #d0d3d6;
+    border-radius: 5px; background: #fff; color: #3370ff; cursor: pointer;
+  }
+  .row-item .org-btn:hover { border-color: #3370ff; }
+  .row-item .tag { flex: none; font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #f0f1f3; color: #646a73; }
+  .row-item .tag.has { background: #e2f6e4; color: #239a3b; }
+  .sep { color: #d0d3d6; }
+</style>
+</head>
+<body>
+<h1>账号分选</h1>
+<div class="hint" style="margin-top:0">粘贴整批账号 → 勾选/范围/随机选出需要的 → 复制或写回主输入框（充值页自动带上）</div>
+<nav>
+  <a href="/">← 充值批处理</a>
+  <a href="/mail.html">Outlook 收信 →</a>
+</nav>
+
+<div class="panel">
+  <textarea id="acct-input" placeholder="粘贴账号行 (与充值页共享, 每行一条 ---- 格式或裸 UUID)"></textarea>
+  <div class="row">
+    <span class="stats" id="stats"></span>
+    <span class="sep">|</span>
+    <button class="btn ghost small" id="sel-all">全选</button>
+    <button class="btn ghost small" id="sel-none">清空</button>
+    <button class="btn ghost small" id="sel-inv">反选</button>
+    <span class="sep">|</span>
+    <input type="text" id="range" placeholder="范围 3-12" style="width:90px">
+    <button class="btn ghost small" id="sel-range">选范围</button>
+    <input type="number" id="rand-n" placeholder="N" style="width:56px" min="1">
+    <button class="btn ghost small" id="sel-rand">随机N个</button>
+    <span class="sep">|</span>
+    <input type="text" id="filter" placeholder="筛选邮箱关键词" style="width:150px">
+  </div>
+  <div id="list"></div>
+</div>
+
+<div class="panel">
+  <div class="row" style="margin-top:0">
+    <b style="font-size:13px">导出选中：</b>
+    <button class="btn" id="copy-rows">复制原始行</button>
+    <button class="btn ghost" id="copy-emails">仅邮箱</button>
+    <button class="btn ghost" id="copy-orgs">仅 Org ID</button>
+    <button class="btn ghost" id="write-back">写回主账号框</button>
+    <span class="stats" id="copy-info"></span>
+  </div>
+  <div class="hint">「写回主账号框」会把选中的行存进共享输入框，回充值页账号框里就是这些，直接配卡密。</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+const EMAIL_RE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
+
+let rows = [];            // {raw, email, org, hasSk, hasRt}
+let selected = new Set(); // 全局序号
+let lastIdx = -1;         // shift 范围选择锚点
+let filter = "";
+
+// ---------- parse ----------
+function parse() {
+  rows = [];
+  for (const raw of $("acct-input").value.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const parts = line.split(/\s*----\s*/);
+    let email = "";
+    for (const p of parts) { const m = p.match(EMAIL_RE); if (m) { email = m[0]; break; } }
+    rows.push({
+      raw: line,
+      email: email || parts[0] || "?",
+      org: (line.match(UUID_RE) || [""])[0],
+      hasSk: /sk-ant-/.test(line),
+      hasRt: /M\.[A-Z0-9_]+\./i.test(line) || line.includes("M.C5"),
+    });
+  }
+  // 行数变化后清掉越界选择
+  selected = new Set([...selected].filter(i => i < rows.length));
+  lastIdx = -1;
+  render();
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- render ----------
+function render() {
+  const kw = filter.toLowerCase();
+  const vis = rows.map((r, i) => ({ r, i })).filter(x => !kw || x.r.email.toLowerCase().includes(kw));
+  $("stats").innerHTML = `共 <b>${rows.length}</b> 行 · 已选 <b>${selected.size}</b>` +
+    (kw ? ` · 筛选 ${vis.length}` : "");
+  $("list").innerHTML = vis.map(({ r, i }) => `
+    <div class="row-item ${selected.has(i) ? "sel" : ""}" data-i="${i}">
+      <input type="checkbox" ${selected.has(i) ? "checked" : ""} tabindex="-1">
+      <span class="num">${i + 1}</span>
+      <span class="email">${esc(r.email)}</span>
+      ${r.org ? `<span class="org" data-u="${r.org}" title="Org ID · 点击复制">${r.org.slice(0, 8)}…${r.org.slice(-4)}</span><button class="org-btn" data-u="${r.org}">复制Org</button>` : ""}
+      <span class="tag ${r.hasSk ? "has" : ""}">sk</span>
+      <span class="tag ${r.hasRt ? "has" : ""}">RT</span>
+    </div>`).join("");
+  $("list").querySelectorAll(".row-item").forEach(el => {
+    el.onclick = ev => {
+      // 点 org 短码/按钮 = 复制, 不切换选择
+      if (ev.target.classList.contains("org") ||
+          ev.target.classList.contains("org-btn")) {
+        copyOrg(ev.target); return;
+      }
+      const i = +el.dataset.i;
+      if (ev.shiftKey && lastIdx >= 0) {
+        const [a, b] = [Math.min(lastIdx, i), Math.max(lastIdx, i)];
+        for (let k = a; k <= b; k++) selected.add(k);
+      } else {
+        selected.has(i) ? selected.delete(i) : selected.add(i);
+        lastIdx = i;
+      }
+      render();
+    };
+  });
+}
+
+async function copyOrg(el) {
+  await copyVal(el.dataset.u);
+  const t = el.textContent; el.textContent = "已复制";
+  setTimeout(() => el.textContent = t, 1000);
+}
+
+async function copyVal(u) {
+  try { await navigator.clipboard.writeText(u); }
+  catch {
+    const ta = document.createElement("textarea");
+    ta.value = u; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); ta.remove();
+  }
+}
+function flash(msg) {
+  $("copy-info").textContent = msg;
+  setTimeout(() => { if ($("copy-info").textContent === msg) $("copy-info").textContent = ""; }, 2000);
+}
+
+// ---------- selection ops ----------
+const visIdx = () => rows.map((r, i) => i)
+  .filter(i => !filter || rows[i].email.toLowerCase().includes(filter.toLowerCase()));
+$("sel-all").onclick = () => { visIdx().forEach(i => selected.add(i)); render(); };
+$("sel-none").onclick = () => { selected.clear(); render(); };
+$("sel-inv").onclick = () => { visIdx().forEach(i => selected.has(i) ? selected.delete(i) : selected.add(i)); render(); };
+$("sel-range").onclick = () => {
+  const m = $("range").value.trim().match(/^(\d+)\s*[-~]\s*(\d+)$/);
+  if (!m) { flash("范围格式: 如 3-12"); return; }
+  const [a, b] = [+m[1], +m[2]];
+  for (let i = Math.min(a, b); i <= Math.max(a, b); i++)
+    if (i >= 1 && i <= rows.length) selected.add(i - 1);
+  render();
+};
+$("sel-rand").onclick = () => {
+  const n = parseInt($("rand-n").value);
+  const pool = visIdx();
+  if (!n || n < 1 || !pool.length) return;
+  selected.clear();
+  const shuffled = pool.sort(() => Math.random() - .5);
+  shuffled.slice(0, Math.min(n, pool.length)).forEach(i => selected.add(i));
+  render();
+};
+$("filter").addEventListener("input", e => { filter = e.target.value; render(); });
+
+// ---------- export ----------
+const selRows = () => [...selected].sort((a, b) => a - b).map(i => rows[i]);
+$("copy-rows").onclick = async () => {
+  const s = selRows();
+  if (!s.length) return flash("未选择任何行");
+  await copyVal(s.map(r => r.raw).join("\n"));
+  flash(`已复制 ${s.length} 行`);
+};
+$("copy-emails").onclick = async () => {
+  const s = selRows();
+  if (!s.length) return flash("未选择任何行");
+  await copyVal(s.map(r => r.email).join("\n"));
+  flash(`已复制 ${s.length} 个邮箱`);
+};
+$("copy-orgs").onclick = async () => {
+  const s = selRows().filter(r => r.org);
+  if (!s.length) return flash("选中行没有 Org ID");
+  await copyVal(s.map(r => r.org).join("\n"));
+  flash(`已复制 ${s.length} 个 Org ID`);
+};
+$("write-back").onclick = () => {
+  const s = selRows();
+  if (!s.length) return flash("未选择任何行");
+  localStorage.setItem("ipiap:acct-input", s.map(r => r.raw).join("\n"));
+  flash(`已写入 ${s.length} 行 → 充值页账号框`);
+};
+
+// ---------- 输入持久化 (与充值/收信页共享 ipiap:acct-input) ----------
+{
+  const el = $("acct-input");
+  const saved = localStorage.getItem("ipiap:acct-input");
+  if (saved != null) el.value = saved;
+  el.addEventListener("input", () => {
+    localStorage.setItem("ipiap:acct-input", el.value);
+    parse();
+  });
+  parse();
+}
+</script>
+</body>
+</html>
